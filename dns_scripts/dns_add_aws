@@ -2,6 +2,46 @@
 # Set AWS_PROFILE_ID to the profile id if not using the default profile
 # set AWS_STATUS_PAUSE=seconds between check, default 5
 # set AWS_STATUS_RETRY=count, default 12
+# 
+# AWS policy required for API
+# {
+#    "Version": "2012-10-17",
+#    "Statement": [
+#        {
+#            "Sid": "ActionOnHostedZone",
+#            "Effect": "Allow",
+#            "Action": [
+#                "route53:ChangeResourceRecordSets",
+#                "route53:ListResourceRecordSets"
+#            ],
+#            "Resource": [
+#                "arn:aws:route53:::hostedzone/YOUR_HOST_ZONE_ID"
+#            ]
+#        },
+#        {
+#            "Sid": "ActionOnRoute53",
+#            "Effect": "Allow",
+#            "Action": [
+#                "route53:ListHostedZones",
+#                "route53:ListHostedZonesByName"
+#            ],
+#            "Resource": [
+#                "*"
+#            ]
+#        },
+#        {
+#            "Sid": "ActionOnRoute53Change",
+#            "Effect": "Allow",
+#            "Action": [
+#                "route53:GetChange"
+#            ],
+#            "Resource": [
+#                "*"
+#            ]
+#        }
+#    ]
+#}
+#
 AWS_STATUS_PAUSE=${AWS_STATUS_PAUSE:-5}
 AWS_STATUS_RETRY=${AWS_STATUS_RETRY:-12}
 AWS_CLI="aws --output text"
