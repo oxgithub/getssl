@@ -1,0 +1,75 @@
+#!/bin/bash
+
+AWS_CLI="aws --output text"
+if [ ! -z "${AWS_PROFILE_ID}" ]; then
+  AWS_CLI+=" --profile ${AWS_PROFILE_ID}"
+fi
+#AWS_CLI+=" --debug"
+
+function get_hostzoneid() {
+  local domain=$(echo $1|cut -s -d . -f 2-)
+  if [ -z ${domain} ]; then
+    echo "failed to obtain domain for $1"
+    exit 1
+  fi
+  local zoneid=$($AWS_CLI route53 list-hosted-zones  --query "HostedZones[?Name=='${domain}.']" |grep hostedzone |cut -s -f 2 |cut -s -d / -f 3)
+  if [ -z ${zoneid} ]; then
+    echo "failed to obtain zoneid for ${domain}"
+    exit 1
+  fi
+  echo "${zoneid}"
+}
+
+function get_resource_value() {
+  local value=$($AWS_CLI route53 list-resource-record-sets --hosted-zone-id "$1" --query "ResourceRecordSets[?Name=='$2.'&&Type=='$3']"|grep RESOURCERECORDS |cut -s -f 2|tr -d \")
+  echo "${value}"
+}
+
+function prepare_change_action() {
+  local temp_file=$(mktemp -t route53_change_action)
+  cat <<EOF > ${temp_file}
+{
+   "Comment": "Lets Encrypt DNS authentication",
+   "Changes": [
+     {
+        "Action": "_ACTION_",
+        "ResourceRecordSet": {
+            "Name": "_HOST_.",
+            "Type": "TXT",
+            "TTL": 60,
+            "ResourceRecords": [
+                {
+                   "Value": "\"_VALUE_\""
+                }
+            ]
+        }
+     }
+   ]
+}
+EOF
+  sed -i "" -e "s;_ACTION_;$1;g" ${temp_file}
+  sed -i "" -e "s;_HOST_;$2;g" ${temp_file}
+  sed -i "" -e "s;_VALUE_;$3;g" ${temp_file}
+  echo ${temp_file}
+}
+
+function change_resource_set() {
+  $AWS_CLI route53 change-resource-record-sets --hosted-zone-id "${1}" --change-batch "file://${2}"
+}
+
+host_zone_id=$(get_hostzoneid "$1")
+echo "In the DNS, the following DNS record should be deleted ;"
+echo "_acme-challenge.${1}"
+echo "from route 53 zone ${host_zone_id}"
+resource_txt_value=$(get_resource_value "${host_zone_id}" "_acme-challenge.${1}" "TXT")
+if [ -z "${resource_txt_value}" ]; then
+  echo "resource record not found"
+  exit 0
+fi
+change_action=$(prepare_change_action DELETE "_acme-challenge.${1}" "${resource_txt_value}")
+
+echo "${change_action}"
+cat ${change_action}
+read -r -p "Press any key to obtain the certificate once the records have been updated..."
+change_resource_set "$host_zone_id" "${change_action}"
+rm ${change_action}

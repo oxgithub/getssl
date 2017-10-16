@@ -1,0 +1,67 @@
+#!/bin/bash
+#set -x
+
+AWS_CLI="aws --output text"
+if [ ! -z "${AWS_PROFILE_ID}" ]; then
+  AWS_CLI+=" --profile ${AWS_PROFILE_ID}"
+fi
+
+function get_hostzoneid() {
+  local domain=$(echo $1|cut -s -d . -f 2-)
+  if [ -z ${domain} ]; then
+    echo "failed to obtain domain for $1"
+    exit 1
+  fi
+  local zoneid=$($AWS_CLI route53 list-hosted-zones  --query "HostedZones[?Name=='${domain}.']" |grep hostedzone |cut -s -f 2 |cut -s -d / -f 3)
+  if [ -z ${zoneid} ]; then
+    echo "failed to obtain zoneid for ${domain}"
+    exit 1
+  fi 
+  echo "${zoneid}"
+}
+
+function prepare_change_action() {
+  local temp_file=$(mktemp -t route53_change_action)
+  cat <<EOF > ${temp_file}
+{
+   "Comment": "Lets Encrypt DNS authentication",
+   "Changes": [
+     {
+        "Action": "_ACTION_",
+        "ResourceRecordSet": {
+            "Name": "_HOST_.",
+            "Type": "TXT",
+            "TTL": 60,
+            "ResourceRecords": [
+                {
+                   "Value": "\"_VALUE_\""
+                }
+            ]
+        }
+     }
+   ]
+}
+EOF
+  sed -i "" -e "s;_ACTION_;$1;g" ${temp_file}
+  sed -i "" -e "s;_HOST_;$2;g" ${temp_file}
+  sed -i "" -e "s;_VALUE_;$3;g" ${temp_file}
+  echo ${temp_file}
+}
+
+function change_resource_set() {
+  $AWS_CLI route53 change-resource-record-sets --hosted-zone-id "${1}" --change-batch "file://${2}"
+}
+
+host_zone_id=$(get_hostzoneid "$1")
+echo "In the DNS, a new TXT record needs to be created for;"
+echo "_acme-challenge.${1}"
+echo "containing the following value"
+echo "$2"
+echo "in aws route 53 zone $host_zone_id"
+change_action=$(prepare_change_action UPSERT "_acme-challenge.${1}" "${2}")
+
+cat ${change_action}
+read -r -p "Press any key to obtain the certificate once the records have been updated..."
+
+change_resource_set "$host_zone_id"  "${change_action}"
+rm ${change_action}
