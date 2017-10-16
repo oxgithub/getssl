@@ -1,11 +1,16 @@
 #!/bin/bash
-
+# Set AWS_PROFILE_ID to the profile id if not using the default profile
+# set AWS_STATUS_PAUSE=seconds between check, default 5
+# set AWS_STATUS_RETRY=count, default 12
+AWS_STATUS_PAUSE=${AWS_STATUS_PAUSE:-5}
+AWS_STATUS_RETRY=${AWS_STATUS_RETRY:-12}
 AWS_CLI="aws --output text"
 if [ ! -z "${AWS_PROFILE_ID}" ]; then
   AWS_CLI+=" --profile ${AWS_PROFILE_ID}"
 fi
-#AWS_CLI+=" --debug"
 
+# Get the host zone id for a hostname
+# $1 hostname
 function get_hostzoneid() {
   local domain=$(echo $1|cut -s -d . -f 2-)
   if [ -z ${domain} ]; then
@@ -16,15 +21,23 @@ function get_hostzoneid() {
   if [ -z ${zoneid} ]; then
     echo "failed to obtain zoneid for ${domain}"
     exit 1
-  fi
+  fi 
   echo "${zoneid}"
 }
 
+# Get the existing value for a resource set
+# $1: host zone id
+# $2: resource set name
+# $3: resource set type
 function get_resource_value() {
   local value=$($AWS_CLI route53 list-resource-record-sets --hosted-zone-id "$1" --query "ResourceRecordSets[?Name=='$2.'&&Type=='$3']"|grep RESOURCERECORDS |cut -s -f 2|tr -d \")
   echo "${value}"
 }
 
+# Prepare the change action for route 53 change-resource-record-sets action 
+# $1: action "CREATE"|"DELETE"|"UPSERT"
+# $2: resource set name
+# $3: resource set value
 function prepare_change_action() {
   local temp_file=$(mktemp -t route53_change_action)
   cat <<EOF > ${temp_file}
@@ -53,23 +66,50 @@ EOF
   echo ${temp_file}
 }
 
+# Send AWS route53 change resource reset sets request
+# Check for status to change to INSYNC
+# $1: host zone id
+# $2: change request JSON file
 function change_resource_set() {
-  $AWS_CLI route53 change-resource-record-sets --hosted-zone-id "${1}" --change-batch "file://${2}"
+  local result=$($AWS_CLI route53 change-resource-record-sets --hosted-zone-id "${1}" --change-batch "file://${2}")
+  # check for result and extract change id
+  local change_id=$(echo "$result" |grep 'CHANGEINFO' | cut -s -d / -f 3|cut -s -f 1)
+  if [ -z "${change_id}" ]; then
+    echo "Failed to perform change action: "
+    echo "$result"
+    exit 1
+  fi
+  # loop to check for change id status
+  for i in $(seq 1 $AWS_STATUS_RETRY); do
+    sleep ${AWS_STATUS_PAUSE}
+    echo -n "Checking status for change request (${change_id})"
+    if [ ! -z "$status" ]; then 
+      echo -n ", last status: $status"
+    fi
+    if [ $i -gt 1 ]; then 
+      echo -n ", retry ($i)"
+    fi
+    echo ""
+    status=$($AWS_CLI route53 get-change --id "${change_id}"| grep 'CHANGEINFO' |cut -s -d / -f 3|cut -s -f 2)
+    if [ "INSYNC" == "${status}" ]; then
+      echo "Successfully applied change request (${change_id}), last status ${status}"
+      return
+    fi
+  done
+  echo "Timed out waiting for INSYNC status for change (${change_id}), last status ${status}"
+  exit 1
 }
 
 host_zone_id=$(get_hostzoneid "$1")
-echo "In the DNS, the following DNS record should be deleted ;"
-echo "_acme-challenge.${1}"
-echo "from route 53 zone ${host_zone_id}"
-resource_txt_value=$(get_resource_value "${host_zone_id}" "_acme-challenge.${1}" "TXT")
-if [ -z "${resource_txt_value}" ]; then
-  echo "resource record not found"
+current_value=$(get_resource_value "${host_zone_id}" "_acme-challenge.${1}" "TXT")
+if [ -z "${current_value}" ]; then
+  echo "No TXT resource set found for _acme-challenge.${1}, action not required"
   exit 0
 fi
-change_action=$(prepare_change_action DELETE "_acme-challenge.${1}" "${resource_txt_value}")
 
-echo "${change_action}"
+change_action=$(prepare_change_action DELETE "_acme-challenge.${1}" "${current_value}")
+echo "Change request for deleting _acme-challenge.${1} TXT resource set from host zone $host_zone_id"
 cat ${change_action}
-read -r -p "Press any key to obtain the certificate once the records have been updated..."
+read -r -p "Press any key to send the aws request..."
 change_resource_set "$host_zone_id" "${change_action}"
 rm ${change_action}
