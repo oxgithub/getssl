@@ -79,7 +79,7 @@ function get_resource_value() {
 # $2: resource set name
 # $3: resource set value
 function prepare_change_action() {
-  local temp_file=$(mktemp -t route53_change_action)
+  local temp_file=$(mktemp -t route53_change_actionXXXXXXXX)
   cat <<EOF > ${temp_file}
 {
    "Comment": "Lets Encrypt DNS authentication",
