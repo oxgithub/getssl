@@ -150,6 +150,6 @@ fi
 change_action=$(prepare_change_action DELETE "_acme-challenge.${1}" "${current_value}")
 echo "Change request for deleting _acme-challenge.${1} TXT resource set from host zone $host_zone_id"
 cat ${change_action}
-read -r -p "Press any key to send the aws request..."
+## read -r -p "Press any key to send the aws request..."
 change_resource_set "$host_zone_id" "${change_action}"
 rm ${change_action}
