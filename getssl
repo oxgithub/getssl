@@ -226,11 +226,19 @@
 # 2020-04-20 Check for domain using all DNS utilities (2.25)
 # 2020-04-22 Fix HAS_HOST and HAS_NSLOOKUP checks - wolfaba
 # 2020-04-22 Fix domain case conversion for different locales - glynge (2.26)
+# 2020-04-26 Fixed ipv4 confirmation with nslookup - Cyber1000
+# 2020-04-29 Fix ftp/sftp problems if challenge starts with a dash
+# 2020-05-06 Fix missing fullchain.ec.crt when creating dual certificates (2.27)
+# 2020-05-14 Add --notify-valid option (exit 2 if certificate is valid)
+# 2020-05-23 Fix --revoke (didn't work with ACMEv02) (2.28)
+# 2020-06-06 Fix missing URL_revoke definition when no CA directory suffix (#566)
+# 2020-06-18 Fix CHECK_REMOTE for DUAL_RSA_ECDSA (#570)
+# 2020-07-14 Support space separated SANS (#574) (2.29)
 # ----------------------------------------------------------------------------------------
 
 PROGNAME=${0##*/}
 PROGDIR="$(cd "$(dirname "$0")" || exit; pwd -P;)"
-VERSION="2.26"
+VERSION="2.29"
 
 # defaults
 ACCOUNT_KEY_LENGTH=4096
@@ -274,12 +282,14 @@ _CREATE_CONFIG=0
 _FORCE_RENEW=0
 _KEEP_VERSIONS=""
 _MUTE=0
+_NOTIFY_VALID=0
 _QUIET=0
 _RECREATE_CSR=0
 _REVOKE=0
 _UPGRADE=0
 _UPGRADE_CHECK=1
 _USE_DEBUG=0
+_ONLY_CHECK_CONFIG=0
 config_errors="false"
 LANG=C
 API=1
@@ -288,6 +298,18 @@ API=1
 ORIGCMD="$0 $*"
 
 # Define all functions (in alphabetical order)
+
+auto_upgrade_v2() {  # Automatically update clients to v2
+  if [[ "${CA}" == *"acme-v01."* ]] || [[ "${CA}" == *"acme-staging."* ]]; then
+    OLDCA=${CA}
+    # shellcheck disable=SC2001
+    CA=$(echo "${OLDCA}" | sed "s/v01/v02/g")
+    # shellcheck disable=SC2001
+    CA=$(echo "${CA}" | sed "s/staging/staging-v02/g")
+    info "Upgraded to v2 (changed ${OLDCA} to ${CA})"
+  fi
+  debug "Using certificate issuer: ${CA}"
+}
 
 cert_archive() {  # Archive certificate file by copying files to dated archive dir.
   debug "creating an archive copy of current new certs"
@@ -478,7 +500,7 @@ check_config() { # check the config files for all obvious errors
 
   # get all domains
   if [[ "$IGNORE_DIRECTORY_DOMAIN" == "true" ]]; then
-    alldomains=${SANS//,/ }
+    alldomains=${SANS//[, ]/ }
   else
     alldomains=$(echo "$DOMAIN,$SANS" | sed "s/,/ /g")
   fi
@@ -548,6 +570,7 @@ check_config() { # check the config files for all obvious errors
           found_ip=true
         elif [[ "$(nslookup "${d}"| grep -c ^Name)" -ge 1 ]]; then
           debug "found IPv4 record for ${d}"
+          found_ip=true
         fi
       fi
 
@@ -699,7 +722,7 @@ copy_file_to_location() { # copies a file, using scp, sftp or ftp if required.
 			user $ftpuser $ftppass
 			cd $ftpdirn
 			lcd $fromdir
-			put $fromfile
+			put ./$fromfile
 			_EOF
     elif [[ "${to:0:5}" == "sftp:" ]] ; then
       debug "using sftp to copy the file from $from"
@@ -717,7 +740,7 @@ copy_file_to_location() { # copies a file, using scp, sftp or ftp if required.
       sshpass -p "$ftppass" sftp $SFTP_OPTS "$ftpuser@$ftphost" <<- _EOF
 			cd $ftpdirn
 			lcd $fromdir
-			put $fromfile
+			put ./$fromfile
 			_EOF
     elif [[ "${to:0:5}" == "davs:" ]] ; then
       debug "using davs to copy the file from $from"
@@ -764,7 +787,7 @@ create_csr() { # create a csr using a given key (if it doesn't already exist)
     if [[ "$IGNORE_DIRECTORY_DOMAIN" == "true" ]]; then
       alldomains=$(echo "$SANS" | sed -e 's/ //g; s/,$//; y/,/\n/' | sort -u)
     else
-      alldomains=$(echo "$DOMAIN,$SANS" | sed -e 's/ //g; s/,$//; y/,/\n/' | sort -u)
+      alldomains=$(echo "$DOMAIN,$SANS" | sed -e 's/,/ /g; s/ $//; y/ /\n/' | sort -u)
     fi
     domains_in_csr=$(openssl req -text -noout -in "$csr_file" \
         | sed -n -e 's/^ *Subject: .* CN=\([A-Za-z0-9.-]*\).*$/\1/p; /^ *DNS:.../ { s/ *DNS://g; y/,/\n/; p; }' \
@@ -1339,6 +1362,7 @@ get_certificate() { # get certificate for csr, if all domains validated.
   gc_csr=$1         # the csr file
   gc_certfile=$2    # The filename for the certificate
   gc_cafile=$3      # The filename for the CA certificate
+  gc_fullchain=$4   # The filename for the fullchain
 
   der=$(openssl req -in "$gc_csr" -outform DER | urlbase64)
   if [[ $API -eq 1 ]]; then
@@ -1385,9 +1409,9 @@ get_certificate() { # get certificate for csr, if all domains validated.
     done
     info "Requesting certificate"
     CertData=$(json_get "$response" "certificate")
-    send_signed_request "$CertData" "" "" "$FULL_CHAIN"
-    info "Full certificate saved in $FULL_CHAIN"
-    awk -v CERT_FILE="$gc_certfile" -v CA_CERT="$gc_cafile" 'BEGIN {outfile=CERT_FILE} split_after==1 {outfile=CA_CERT;split_after=0} /-----END CERTIFICATE-----/ {split_after=1} {print > outfile}' "$FULL_CHAIN"
+    send_signed_request "$CertData" "" "" "$gc_fullchain"
+    info "Full certificate saved in $gc_fullchain"
+    awk -v CERT_FILE="$gc_certfile" -v CA_CERT="$gc_cafile" 'BEGIN {outfile=CERT_FILE} split_after==1 {outfile=CA_CERT;split_after=0} /-----END CERTIFICATE-----/ {split_after=1} {print > outfile}' "$gc_fullchain"
     info "Certificate saved in $gc_certfile"
   fi
 }
@@ -1478,8 +1502,10 @@ get_signing_params() { # get signing parameters from key
 }
 
 graceful_exit() { # normal exit function.
+  exit_code=$1
   clean_up
-  exit
+  # shellcheck disable=SC2086
+  exit $exit_code
 }
 
 help_message() { # print out the help message
@@ -1722,6 +1748,38 @@ json_get() { # get values from json
   fi
 }
 
+obtain_ca_resource_locations()
+{
+  for suffix in "" "/directory" "/dir";
+  do
+    # Obtain CA resource locations
+    ca_all_loc=$(curl --user-agent "$CURL_USERAGENT" "${CA}${suffix}" 2>/dev/null)
+    debug "ca_all_loc from ${CA}${suffix} gives $ca_all_loc"
+    # APIv1
+    URL_new_reg=$(echo "$ca_all_loc" | grep "new-reg" | awk -F'"' '{print $4}')
+    URL_new_authz=$(echo "$ca_all_loc" | grep "new-authz" | awk -F'"' '{print $4}')
+    URL_new_cert=$(echo "$ca_all_loc" | grep "new-cert" | awk -F'"' '{print $4}')
+    #API v2
+    URL_newAccount=$(echo "$ca_all_loc" | grep "newAccount" | awk -F'"' '{print $4}')
+    URL_newNonce=$(echo "$ca_all_loc" | grep "newNonce" | awk -F'"' '{print $4}')
+    URL_newOrder=$(echo "$ca_all_loc" | grep "newOrder" | awk -F'"' '{print $4}')
+    URL_revoke=$(echo "$ca_all_loc" | grep "revokeCert" | awk -F'"' '{print $4}')
+
+    if [[ -n "$URL_new_reg" ]] || [[ -n "$URL_newAccount" ]]; then
+      break
+    fi
+  done
+
+  if [[ -n "$URL_new_reg" ]]; then
+    API=1
+  elif [[ -n "$URL_newAccount" ]]; then
+    API=2
+  else
+    error_exit "unknown API version"
+  fi
+  debug "Using API v$API"
+}
+
 os_esed() { # Use different sed version for different os types (extended regex)
   if [[ "$os" == "bsd" ]]; then # BSD requires -E flag for extended regex
     sed -E "${@}"
@@ -1786,9 +1844,9 @@ revoke_certificate() { # revoke a certificate
   # need to set the revoke key as "account_key" since it's used in send_signed_request.
   get_signing_params "$REVOKE_KEY"
   TEMP_DIR=$(mktemp -d 2>/dev/null || mktemp -d -t getssl)
-  debug "revoking from $CA"
-  rcertdata=$(openssl x509 -in "$REVOKE_CERT" -inform PEM -outform DER | urlbase64)
-  send_signed_request "$URL_revoke" "{\"resource\": \"revoke-cert\", \"certificate\": \"$rcertdata\"}"
+  debug "revoking from $URL_revoke"
+  rcertdata=$(sed '1d;$d' "$REVOKE_CERT" | tr -d "\r\n" | tr '/+' '_-' | tr -d '= ')
+  send_signed_request "$URL_revoke" "{\"certificate\": \"$rcertdata\",\"reason\": $REVOKE_REASON}"
   if [[ $code -eq "200" ]]; then
     info "certificate revoked"
   else
@@ -1889,7 +1947,7 @@ send_signed_request() { # Sends a request to the ACME server, signed with your p
   # get nonce from ACME server
   if [[ $API -eq 1 ]]; then
     nonceurl="$CA/directory"
-    nonce=$($CURL -I $nonceurl | grep "^Replay-Nonce:" | awk '{print $2}' | tr -d '\r\n ')
+    nonce=$($CURL -I "$nonceurl" | grep "^Replay-Nonce:" | awk '{print $2}' | tr -d '\r\n ')
   else # APIv2
     nonce=$($CURL -I "$URL_newNonce" | grep "^Replay-Nonce:" | awk '{print $2}' | tr -d '\r\n ')
   fi
@@ -1938,15 +1996,18 @@ send_signed_request() { # Sends a request to the ACME server, signed with your p
     while [[ "$code" -eq 500 ]]; do
       if [[ "$outfile" ]] ; then
         $CURL -X POST -H "Content-Type: application/jose+json" --data "$body" "$url" > "$outfile"
+        errcode=$?
         response=$(cat "$outfile")
       elif [[ "$needbase64" ]] ; then
         response=$($CURL -X POST -H "Content-Type: application/jose+json" --data "$body" "$url" | urlbase64)
+        errcode=$?
       else
         response=$($CURL -X POST -H "Content-Type: application/jose+json" --data "$body" "$url")
+        errcode=$?
       fi
 
-      if [[ "$response" == "" ]]; then
-        error_exit "ERROR curl \"$url\" returned nothing"
+      if [[ $errcode -gt 0 || ( "$response" == "" && $url != *"revoke"* ) ]]; then
+        error_exit "ERROR curl \"$url\" failed with $errcode and returned $response"
       fi
 
       responseHeaders=$(cat "$CURL_HEADER")
@@ -2067,73 +2128,79 @@ usage() { # echos out the program usage
 }
 
 write_domain_template() { # write out a template file for a domain.
-  cat > "$1" <<- _EOF_domain_
-	# vim: filetype=sh
-	#
-	# This file is read second (and per domain if running with the -a option)
-	# and overwrites any settings from the first file
-	#
-	# Uncomment and modify any variables you need
-	# see https://github.com/srvrco/getssl/wiki/Config-variables for details
-	# see https://github.com/srvrco/getssl/wiki/Example-config-files for example configs
-	#
-	# The staging server is best for testing
-	#CA="https://acme-staging-v02.api.letsencrypt.org"
-	# This server issues full certificates, however has rate limits
-	#CA="https://acme-v02.api.letsencrypt.org"
+  if [[ -s "$WORKING_DIR/getssl_default.cfg" ]]; then
+  	export DOMAIN="$DOMAIN"
+  	export EX_SANS="$EX_SANS"
+  	envsubst < "$WORKING_DIR/getssl_default.cfg"  > "$1"
+  else
+    cat > "$1" <<- _EOF_domain_
+		# vim: filetype=sh
+		#
+		# This file is read second (and per domain if running with the -a option)
+		# and overwrites any settings from the first file
+		#
+		# Uncomment and modify any variables you need
+		# see https://github.com/srvrco/getssl/wiki/Config-variables for details
+		# see https://github.com/srvrco/getssl/wiki/Example-config-files for example configs
+		#
+		# The staging server is best for testing
+		#CA="https://acme-staging-v02.api.letsencrypt.org"
+		# This server issues full certificates, however has rate limits
+		#CA="https://acme-v02.api.letsencrypt.org"
 
-	# Private key types - can be rsa, prime256v1, secp384r1 or secp521r1
-	#PRIVATE_KEY_ALG="rsa"
+		# Private key types - can be rsa, prime256v1, secp384r1 or secp521r1
+		#PRIVATE_KEY_ALG="rsa"
 
-	# Additional domains - this could be multiple domains / subdomains in a comma separated list
-	# Note: this is Additional domains - so should not include the primary domain.
-	SANS="${EX_SANS}"
+		# Additional domains - this could be multiple domains / subdomains in a comma separated list
+		# Note: this is Additional domains - so should not include the primary domain.
+		SANS="${EX_SANS}"
 
-	# Acme Challenge Location. The first line for the domain, the following ones for each additional domain.
-	# If these start with ssh: then the next variable is assumed to be the hostname and the rest the location.
-	# An ssh key will be needed to provide you with access to the remote server.
-	# Optionally, you can specify a different userid for ssh/scp to use on the remote server before the @ sign.
-	# If left blank, the username on the local server will be used to authenticate against the remote server.
-	# If these start with ftp: then the next variables are ftpuserid:ftppassword:servername:ACL_location
-	# These should be of the form "/path/to/your/website/folder/.well-known/acme-challenge"
-	# where "/path/to/your/website/folder/" is the path, on your web server, to the web root for your domain.
-	# You can also user WebDAV over HTTPS as transport mechanism. To do so, start with davs: followed by username,
-	# password, host, port (explicitly needed even if using default port 443) and path on the server.
-	#ACL=('/var/www/${DOMAIN}/web/.well-known/acme-challenge'
-	#     'ssh:server5:/var/www/${DOMAIN}/web/.well-known/acme-challenge'
-	#     'ssh:sshuserid@server5:/var/www/${DOMAIN}/web/.well-known/acme-challenge'
-	#     'ftp:ftpuserid:ftppassword:${DOMAIN}:/web/.well-known/acme-challenge'
-	#     'davs:davsuserid:davspassword:{DOMAIN}:443:/web/.well-known/acme-challenge')
+		# Acme Challenge Location. The first line for the domain, the following ones for each additional domain.
+		# If these start with ssh: then the next variable is assumed to be the hostname and the rest the location.
+		# An ssh key will be needed to provide you with access to the remote server.
+		# Optionally, you can specify a different userid for ssh/scp to use on the remote server before the @ sign.
+		# If left blank, the username on the local server will be used to authenticate against the remote server.
+		# If these start with ftp: then the next variables are ftpuserid:ftppassword:servername:ACL_location
+		# These should be of the form "/path/to/your/website/folder/.well-known/acme-challenge"
+		# where "/path/to/your/website/folder/" is the path, on your web server, to the web root for your domain.
+		# You can also user WebDAV over HTTPS as transport mechanism. To do so, start with davs: followed by username,
+		# password, host, port (explicitly needed even if using default port 443) and path on the server.
+		#ACL=('/var/www/${DOMAIN}/web/.well-known/acme-challenge'
+		#     'ssh:server5:/var/www/${DOMAIN}/web/.well-known/acme-challenge'
+		#     'ssh:sshuserid@server5:/var/www/${DOMAIN}/web/.well-known/acme-challenge'
+		#     'ftp:ftpuserid:ftppassword:${DOMAIN}:/web/.well-known/acme-challenge'
+		#     'davs:davsuserid:davspassword:{DOMAIN}:443:/web/.well-known/acme-challenge')
 
-	# Specify SSH options, e.g. non standard port in SSH_OPTS
-	# (Can also use SCP_OPTS and SFTP_OPTS)
-	# SSH_OPTS=-p 12345
+		# Specify SSH options, e.g. non standard port in SSH_OPTS
+		# (Can also use SCP_OPTS and SFTP_OPTS)
+		# SSH_OPTS=-p 12345
 
-	# Set USE_SINGLE_ACL="true" to use a single ACL for all checks
-	#USE_SINGLE_ACL="false"
+		# Set USE_SINGLE_ACL="true" to use a single ACL for all checks
+		#USE_SINGLE_ACL="false"
 
-	# Location for all your certs, these can either be on the server (full path name)
-	# or using ssh /sftp as for the ACL
-	#DOMAIN_CERT_LOCATION="/etc/ssl/${DOMAIN}.crt" # this is domain cert
-	#DOMAIN_KEY_LOCATION="/etc/ssl/${DOMAIN}.key" # this is domain key
-	#CA_CERT_LOCATION="/etc/ssl/chain.crt" # this is CA cert
-	#DOMAIN_CHAIN_LOCATION="" # this is the domain cert and CA cert
-	#DOMAIN_PEM_LOCATION="" # this is the domain key, domain cert and CA cert
+		# Location for all your certs, these can either be on the server (full path name)
+		# or using ssh /sftp as for the ACL
+		#DOMAIN_CERT_LOCATION="/etc/ssl/${DOMAIN}.crt" # this is domain cert
+		#DOMAIN_KEY_LOCATION="/etc/ssl/${DOMAIN}.key" # this is domain key
+		#CA_CERT_LOCATION="/etc/ssl/chain.crt" # this is CA cert
+		#DOMAIN_CHAIN_LOCATION="" # this is the domain cert and CA cert
+		#DOMAIN_PEM_LOCATION="" # this is the domain key, domain cert and CA cert
 
-	# The command needed to reload apache / nginx or whatever you use
-	#RELOAD_CMD=""
+		# The command needed to reload apache / nginx or whatever you use
+		#RELOAD_CMD=""
 
-	# Uncomment the following line to prevent non-interactive renewals of certificates
-	#PREVENT_NON_INTERACTIVE_RENEWAL="true"
+		# Uncomment the following line to prevent non-interactive renewals of certificates
+		#PREVENT_NON_INTERACTIVE_RENEWAL="true"
 
-	# Define the server type. This can be https, ftp, ftpi, imap, imaps, pop3, pop3s, smtp,
-	# smtps_deprecated, smtps, smtp_submission, xmpp, xmpps, ldaps or a port number which
-	# will be checked for certificate expiry and also will be checked after
-	# an update to confirm correct certificate is running (if CHECK_REMOTE) is set to true
-	#SERVER_TYPE="https"
-	#CHECK_REMOTE="true"
-	#CHECK_REMOTE_WAIT="2" # wait 2 seconds before checking the remote server
-	_EOF_domain_
+		# Define the server type. This can be https, ftp, ftpi, imap, imaps, pop3, pop3s, smtp,
+		# smtps_deprecated, smtps, smtp_submission, xmpp, xmpps, ldaps or a port number which
+		# will be checked for certificate expiry and also will be checked after
+		# an update to confirm correct certificate is running (if CHECK_REMOTE) is set to true
+		#SERVER_TYPE="https"
+		#CHECK_REMOTE="true"
+		#CHECK_REMOTE_WAIT="2" # wait 2 seconds before checking the remote server
+		_EOF_domain_
+  fi
 }
 
 write_getssl_template() { # write out the main template file
@@ -2206,34 +2273,41 @@ while [[ -n ${1+defined} ]]; do
     -h | --help)
       help_message; graceful_exit ;;
     -d | --debug)
-     _USE_DEBUG=1 ;;
+      _USE_DEBUG=1 ;;
     -c | --create)
-     _CREATE_CONFIG=1 ;;
+      _CREATE_CONFIG=1 ;;
     -f | --force)
-     _FORCE_RENEW=1 ;;
+      _FORCE_RENEW=1 ;;
+    --notify-valid)
+      # Exit 2 if certificate is valid and doesn't need renewing
+      _NOTIFY_VALID=2 ;;
     -a | --all)
-     _CHECK_ALL=1 ;;
+      _CHECK_ALL=1 ;;
     -k | --keep)
-     shift; _KEEP_VERSIONS="$1";;
+      shift; _KEEP_VERSIONS="$1";;
     -q | --quiet)
-     _QUIET=1 ;;
+      _QUIET=1 ;;
     -Q | --mute)
-     _QUIET=1
-     _MUTE=1 ;;
+      _QUIET=1
+      _MUTE=1 ;;
     -r | --revoke)
-     _REVOKE=1
-     shift
-     REVOKE_CERT="$1"
-     shift
-     REVOKE_KEY="$1"
-     shift
-     REVOKE_CA="$1" ;;
+      _REVOKE=1
+      shift
+      REVOKE_CERT="$1"
+      shift
+      REVOKE_KEY="$1"
+      shift
+      CA="$1"
+      REVOKE_CA="$1"
+      REVOKE_REASON=0 ;;
     -u | --upgrade)
-     _UPGRADE=1 ;;
+      _UPGRADE=1 ;;
     -U | --nocheck)
       _UPGRADE_CHECK=0 ;;
     -i | --install)
       _CERT_INSTALL=1 ;;
+    --check-config)
+      _ONLY_CHECK_CONFIG=1 ;;
     -w)
       shift; WORKING_DIR="$1" ;;
     -*)
@@ -2292,7 +2366,8 @@ if [[ $_REVOKE -eq 1 ]]; then
   else
     CA=$REVOKE_CA
   fi
-  URL_revoke=$(curl --user-agent "$CURL_USERAGENT" "${CA}/directory" 2>/dev/null | grep "revoke-cert" | awk -F'"' '{print $4}')
+
+  obtain_ca_resource_locations
   revoke_certificate
   graceful_exit
 fi
@@ -2451,12 +2526,20 @@ set_server_type
 # check what dns utils are installed
 find_dns_utils
 
+# auto upgrade clients to v2
+auto_upgrade_v2
+
 # check config for typical errors.
 check_config
 
+# exit if just checking config (used for testing)
+if [ "${_ONLY_CHECK_CONFIG}" -eq 1 ]; then
+  info "Configuration check successful"
+  graceful_exit
+fi
+
 # if -i|--install install certs, reload and exit
-if [ "0${_CERT_INSTALL}" -eq 1 ]
-then
+if [ "0${_CERT_INSTALL}" -eq 1 ]; then
   cert_install
   reload_service
   graceful_exit
@@ -2468,39 +2551,7 @@ if [[ -e "$DOMAIN_DIR/FORCE_RENEWAL" ]]; then
   info "${DOMAIN}: forcing renewal (due to FORCE_RENEWAL file)"
 fi
 
-# Obtain CA resource locations
-ca_all_loc=$(curl --user-agent "$CURL_USERAGENT" "${CA}" 2>/dev/null)
-debug "ca_all_loc from ${CA} gives $ca_all_loc"
-# APIv1
-URL_new_reg=$(echo "$ca_all_loc" | grep "new-reg" | awk -F'"' '{print $4}')
-URL_new_authz=$(echo "$ca_all_loc" | grep "new-authz" | awk -F'"' '{print $4}')
-URL_new_cert=$(echo "$ca_all_loc" | grep "new-cert" | awk -F'"' '{print $4}')
-#API v2
-URL_newAccount=$(echo "$ca_all_loc" | grep "newAccount" | awk -F'"' '{print $4}')
-URL_newNonce=$(echo "$ca_all_loc" | grep "newNonce" | awk -F'"' '{print $4}')
-URL_newOrder=$(echo "$ca_all_loc" | grep "newOrder" | awk -F'"' '{print $4}')
-if [[ -z "$URL_new_reg" ]]  && [[ -z "$URL_newAccount" ]]; then
-  ca_all_loc=$(curl --user-agent "$CURL_USERAGENT" "${CA}/directory" 2>/dev/null)
-  debug "ca_all_loc from ${CA}/directory gives $ca_all_loc"
-  # APIv1
-  URL_new_reg=$(echo "$ca_all_loc" | grep "new-reg" | awk -F'"' '{print $4}')
-  URL_new_authz=$(echo "$ca_all_loc" | grep "new-authz" | awk -F'"' '{print $4}')
-  URL_new_cert=$(echo "$ca_all_loc" | grep "new-cert" | awk -F'"' '{print $4}')
-  #API v2
-  URL_newAccount=$(echo "$ca_all_loc" | grep "newAccount" | awk -F'"' '{print $4}')
-  URL_newNonce=$(echo "$ca_all_loc" | grep "newNonce" | awk -F'"' '{print $4}')
-  URL_newOrder=$(echo "$ca_all_loc" | grep "newOrder" | awk -F'"' '{print $4}')
-fi
-
-if [[ -n "$URL_new_reg" ]]; then
-  API=1
-elif [[ -n "$URL_newAccount" ]]; then
-  API=2
-else
-  info "unknown API version"
-  graceful_exit
-fi
-debug "Using API v$API"
+obtain_ca_resource_locations
 
 # Check if awk supports json_awk (required for ACMEv2)
 if [[ $API -eq 2 ]]; then
@@ -2513,9 +2564,14 @@ fi
 # if check_remote is true then connect and obtain the current certificate (if not forcing renewal)
 if [[ "${CHECK_REMOTE}" == "true" ]] && [[ $_FORCE_RENEW -eq 0 ]]; then
   debug "getting certificate for $DOMAIN from remote server"
+if [[ "$DUAL_RSA_ECDSA" == "true" ]]; then
+    CIPHER="-cipher RSA"
+else
+    CIPHER=""
+fi
   # shellcheck disable=SC2086
   EX_CERT=$(echo \
-    | openssl s_client -servername "${DOMAIN}" -connect "${DOMAIN}:${REMOTE_PORT}" ${REMOTE_EXTRA} 2>/dev/null \
+    | openssl s_client -servername "${DOMAIN}" -connect "${DOMAIN}:${REMOTE_PORT}" ${REMOTE_EXTRA} ${CIPHER} 2>/dev/null \
     | openssl x509 2>/dev/null)
   if [[ -n "$EX_CERT" ]]; then # if obtained a cert
     if [[ -s "$CERT_FILE" ]]; then # if local exists
@@ -2596,8 +2652,8 @@ if [[ -s "$CERT_FILE" ]]; then
         debug "upgrading from fake cert to real"
       else
         info "${DOMAIN}: certificate is valid for more than $RENEW_ALLOW days (until $enddate)"
-        # everything is OK, so exit.
-        graceful_exit
+        # everything is OK, so exit, if requested with the --notify-valid, exit with code 2
+        graceful_exit $_NOTIFY_VALID
       fi
     else
       debug "${DOMAIN}: certificate needs renewal"
@@ -2642,9 +2698,9 @@ fi
 if [[ -z "$SANS" ]]; then
   SANLIST="subjectAltName=DNS:${DOMAIN}"
 elif [[ "$IGNORE_DIRECTORY_DOMAIN" == "true" ]]; then
-  SANLIST="subjectAltName=DNS:${SANS//,/,DNS:}"
+  SANLIST="subjectAltName=DNS:${SANS//[, ]/,DNS:}"
 else
-  SANLIST="subjectAltName=DNS:${DOMAIN},DNS:${SANS//,/,DNS:}"
+  SANLIST="subjectAltName=DNS:${DOMAIN},DNS:${SANS//[, ]/,DNS:}"
 fi
 debug "created SAN list = $SANLIST"
 
@@ -2704,7 +2760,7 @@ info "Verify each domain"
 
 # loop through domains for cert ( from SANS list)
 if [[ "$IGNORE_DIRECTORY_DOMAIN" == "true" ]]; then
-  alldomains=${SANS//,/ }
+  alldomains=${SANS//[, ]/ }
 else
   alldomains=$(echo "$DOMAIN,$SANS" | sed "s/,/ /g")
 fi
@@ -2721,7 +2777,8 @@ info "Verification completed, obtaining certificate."
 #obtain the certificate.
 get_certificate "$DOMAIN_DIR/${DOMAIN}.csr" \
                 "$CERT_FILE" \
-                "$CA_CERT"
+                "$CA_CERT" \
+                "$FULL_CHAIN"
 if [[ "$DUAL_RSA_ECDSA" == "true" ]]; then
   info "Creating order for EC certificate"
   if [[ $API -eq 2 ]]; then
@@ -2731,7 +2788,8 @@ if [[ "$DUAL_RSA_ECDSA" == "true" ]]; then
   info "obtaining EC certificate."
   get_certificate "$DOMAIN_DIR/${DOMAIN}.ec.csr" \
                   "${CERT_FILE%.*}.ec.crt" \
-                  "${CA_CERT%.*}.ec.crt"
+                  "${CA_CERT%.*}.ec.crt" \
+                  "${FULL_CHAIN%.*}.ec.crt"
 fi
 
 # create Archive of new certs and keys.
@@ -2767,16 +2825,30 @@ fi
 # Check if the certificate is installed correctly
 if [[ ${CHECK_REMOTE} == "true" ]]; then
   sleep "$CHECK_REMOTE_WAIT"
-  # shellcheck disable=SC2086
-  CERT_REMOTE=$(echo \
-    | openssl s_client -servername "${DOMAIN}" -connect "${DOMAIN}:${REMOTE_PORT}" ${REMOTE_EXTRA} 2>/dev/null \
-    | openssl x509 -noout -fingerprint 2>/dev/null)
-  CERT_LOCAL=$(openssl x509 -noout -fingerprint < "$CERT_FILE" 2>/dev/null)
-  if [[ "$CERT_LOCAL" == "$CERT_REMOTE" ]]; then
-    info "${DOMAIN} - certificate installed OK on server"
+  if [[ "$DUAL_RSA_ECDSA" == "true" ]]; then
+    PARAMS=("-cipher RSA" "-cipher ECDSA")
+    CERTS=("$CERT_FILE" "${CERT_FILE%.*}.ec.crt")
+    TYPES=("rsa" "$PRIVATE_KEY_ALG")
   else
-    error_exit "${DOMAIN} - certificate obtained but certificate on server is different from the new certificate"
+    PARAMS=("")
+    CERTS=("$CERT_FILE")
+    TYPES=("$PRIVATE_KEY_ALG")
   fi
+
+  for ((i=0; i<${#PARAMS[@]};++i)); do
+    debug "Checking ${CERTS[i]}"
+    # shellcheck disable=SC2086
+    CERT_REMOTE=$(echo \
+        | openssl s_client -servername "${DOMAIN}" -connect "${DOMAIN}:${REMOTE_PORT}" ${REMOTE_EXTRA} ${PARAMS[i]} 2>/dev/null \
+        | openssl x509 -noout -fingerprint 2>/dev/null)
+    CERT_LOCAL=$(openssl x509 -noout -fingerprint < "${CERTS[i]}" 2>/dev/null)
+    if [[ "$CERT_LOCAL" == "$CERT_REMOTE" ]]; then
+        info "${DOMAIN} - ${TYPES[i]} certificate installed OK on server"
+    else
+        info "${CERTS[i]} didn't match server"
+        error_exit "${DOMAIN} - ${TYPES[i]} certificate obtained but certificate on server is different from the new certificate"
+    fi
+  done
 fi
 # end of Check if the certificate is installed correctly
 

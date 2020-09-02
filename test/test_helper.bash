@@ -1,6 +1,27 @@
 INSTALL_DIR=/root
 CODE_DIR=/getssl
 
+check_certificates()
+{
+    assert [ -e "${INSTALL_DIR}/.getssl/${GETSSL_CMD_HOST}/chain.crt" ]
+    assert [ -e "${INSTALL_DIR}/.getssl/${GETSSL_CMD_HOST}/fullchain.crt" ]
+    assert [ -e "${INSTALL_DIR}/.getssl/${GETSSL_CMD_HOST}/${GETSSL_CMD_HOST}.crt" ]
+}
+
+# Only nginx > 1.11.0 support dual certificates in a single configuration file
+# https://unix.stackexchange.com/questions/285924/how-to-compare-a-programs-version-in-a-shell-script
+check_nginx() {
+    requiredver="1.11.0"
+    currentver="$(nginx -v)"
+    if [ "$(printf '%s\n' "$requiredver" "$currentver" | sort -V | head -n1)" = "$requiredver" ]; then
+        export OLD_NGINX="false"
+    else
+        echo "INFO: Running nginx version $currentver which doesn't support dual certificates" >&3
+        echo "INFO: not checking that certificate is installed correctly" >&3
+        export OLD_NGINX="true"
+    fi
+}
+
 check_output_for_errors() {
     refute_output --regexp '[Ff][Aa][Ii][Ll][Ee][Dd]'
     # less strict tests if running with debug output
@@ -51,7 +72,7 @@ if [[ -f /usr/bin/supervisord && -f /etc/supervisord.conf ]]; then
     if [[ ! $(pgrep supervisord) ]]; then
         /usr/bin/supervisord -c /etc/supervisord.conf >&3-
     fi
-elif [ "$GETSSL_OS" == "centos7" ]; then
+elif [[ "$GETSSL_OS" == "centos"[78] ]]; then
     if [ -z "$(pgrep nginx)" ]; then
         nginx >&3-
     fi

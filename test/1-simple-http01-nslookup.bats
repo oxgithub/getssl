@@ -27,16 +27,14 @@ teardown() {
 }
 
 
-@test "Create new certificate using DNS-01 verification (nslookup)" {
-    CONFIG_FILE="getssl-dns01.cfg"
+@test "Create new certificate using HTTP-01 verification (nslookup)" {
     if [ -n "$STAGING" ]; then
-        CONFIG_FILE="getssl-dns01.cfg"
+        skip "Using staging server, skipping internal test"
     fi
-
+    CONFIG_FILE="getssl-http01.cfg"
     setup_environment
     init_getssl
-    create_certificate -d
+    create_certificate
     assert_success
-    assert_output --partial "nslookup"
-    check_output_for_errors "debug"
+    check_output_for_errors
 }

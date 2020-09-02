@@ -8,35 +8,33 @@ load '/getssl/test/test_helper.bash'
 # This is run for every test
 setup() {
     export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
-    if [ -f /usr/bin/dig ]; then
-        mv /usr/bin/dig /usr/bin/dig.getssl.bak
-    fi
     if [ -f /usr/bin/host ]; then
         mv /usr/bin/host /usr/bin/host.getssl.bak
+    fi
+    if [ -f /usr/bin/nslookup ]; then
+        mv /usr/bin/nslookup /usr/bin/nslookup.getssl.bak
     fi
 }
 
 
 teardown() {
-    if [ -f /usr/bin/dig.getssl.bak ]; then
-        mv /usr/bin/dig.getssl.bak /usr/bin/dig
-    fi
     if [ -f /usr/bin/host.getssl.bak ]; then
         mv /usr/bin/host.getssl.bak /usr/bin/host
+    fi
+    if [ -f /usr/bin/nslookup.getssl.bak ]; then
+        mv /usr/bin/nslookup.getssl.bak /usr/bin/nslookup
     fi
 }
 
 
-@test "Create new certificate using DNS-01 verification (nslookup)" {
-    CONFIG_FILE="getssl-dns01.cfg"
+@test "Create new certificate using HTTP-01 verification (dig)" {
     if [ -n "$STAGING" ]; then
-        CONFIG_FILE="getssl-dns01.cfg"
+        skip "Using staging server, skipping internal test"
     fi
-
+    CONFIG_FILE="getssl-http01.cfg"
     setup_environment
     init_getssl
-    create_certificate -d
+    create_certificate
     assert_success
-    assert_output --partial "nslookup"
-    check_output_for_errors "debug"
+    check_output_for_errors
 }

@@ -11,7 +11,7 @@ setup() {
 }
 
 
-@test "Create new certificate using HTTP-01 verification (any dns tool)" {
+@test "Create certificate to check valid exit code" {
     if [ -n "$STAGING" ]; then
         skip "Using staging server, skipping internal test"
     fi
@@ -24,12 +24,22 @@ setup() {
 }
 
 
-@test "Force renewal of certificate using HTTP-01 (any dns tool)" {
+@test "Check no-renewal needed exits with normal exit code" {
     if [ -n "$STAGING" ]; then
         skip "Using staging server, skipping internal test"
     fi
-    run ${CODE_DIR}/getssl -f $GETSSL_HOST
+    run ${CODE_DIR}/getssl $GETSSL_HOST
     assert_success
+    check_output_for_errors
+}
+
+
+@test "Check no-renewal needed returns 2 if requested" {
+    if [ -n "$STAGING" ]; then
+        skip "Using staging server, skipping internal test"
+    fi
+    run ${CODE_DIR}/getssl --notify-valid $GETSSL_HOST
+    assert [ $status == 2 ]
     check_output_for_errors
     cleanup_environment
 }
