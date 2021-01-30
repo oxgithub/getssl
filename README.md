@@ -1,8 +1,22 @@
-![Run all tests](https://github.com/srvrco/getssl/workflows/Run%20all%20tests/badge.svg) ![shellcheck](https://github.com/srvrco/getssl/workflows/shellcheck/badge.svg)
 # getssl
+
+![Run all tests](https://github.com/srvrco/getssl/workflows/Run%20all%20tests/badge.svg) ![shellcheck](https://github.com/srvrco/getssl/workflows/shellcheck/badge.svg)
 
 Obtain SSL certificates from the letsencrypt.org ACME server. Suitable
 for automating the process on remote servers.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Overview](#overview)
+- [Getting started](#getting-started)
+- [Automating updates](#automating-updates)
+- [Structure](#structure)
+- [Server-Types](#server-types)
+- [Revoke a certificate](#revoke-a-certificate)
+- [Elliptic curve keys](#elliptic-curve-keys)
+- [Issues / problems / help](#issues--problems--help)
 
 ## Features
 
@@ -174,7 +188,7 @@ command line).
 Within the **working directory** is a config file `getssl.cfg` which is a
 simple bash file containing variables, an example of which is:
 
-```getssl
+```sh
 # Uncomment and modify any variables you need
 # The staging server is best for testing (hence set as default)
 CA="https://acme-staging-v02.api.letsencrypt.org"
@@ -200,7 +214,7 @@ then, within the **working directory** there will be a folder for each
 certificate (based on its domain name). Within that folder will be a
 config file (again called `getssl.cfg`). An example of which is:
 
-```getssl
+```sh
 # Uncomment and modify any variables you need
 # see https://github.com/srvrco/getssl/wiki/Config-variables for details
 # see https://github.com/srvrco/getssl/wiki/Example-config-files for example configs
@@ -239,7 +253,9 @@ DOMAIN_KEY_LOCATION="ssh:server5:/etc/ssl/domain.key"
 #DOMAIN_PEM_LOCATION="" this is the domain_key. domain cert and CA cert
 
 
-# The command needed to reload apache / nginx or whatever you use
+# The command needed to reload apache / nginx or whatever you use.
+# Several (ssh) commands may be given using a bash array:
+# RELOAD_CMD=('ssh:sshuserid@server5:systemctl reload httpd' 'logger getssl for server5 efficient.')
 RELOAD_CMD="service apache2 reload"
 
 # Define the server type. This can be https, ftp, ftpi, imap, imaps, pop3, pop3s, smtp,
@@ -270,7 +286,7 @@ Multiple locations can be defined for a file by separating the locations with a 
 A typical config file for `example.com` and `www.example.com` on the
 same server would be:
 
-```getssl
+```sh
 # uncomment and modify any variables you need
 # The staging server is best for testing
 CA="https://acme-staging-v02.api.letsencrypt.org"

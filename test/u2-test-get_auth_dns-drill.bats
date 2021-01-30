@@ -31,19 +31,6 @@ teardown() {
 }
 
 
-teardown() {
-    if [ -f /usr/bin/host.getssl.bak ]; then
-        mv /usr/bin/host.getssl.bak /usr/bin/host
-    fi
-    if [ -f /usr/bin/nslookup.getssl.bak ]; then
-        mv /usr/bin/nslookup.getssl.bak /usr/bin/nslookup
-    fi
-    if [ -f /usr/bin/dig.getssl.bak ]; then
-        mv /usr/bin/dig.getssl.bak /usr/bin/dig
-    fi
-}
-
-
 @test "Check get_auth_dns using drill NS" {
     if [ ! -f /usr/bin/drill ]; then
         # Can't find drill package for centos8
@@ -78,14 +65,14 @@ teardown() {
     run get_auth_dns ubuntu-getssl.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
     # Assert that we had to use drill NS
     assert_line --partial 'Using drill NS'
 
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
 }
 
 
@@ -110,7 +97,7 @@ teardown() {
     run get_auth_dns ubuntu-getssl.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
 
     # Assert that we had to use drill NS
     assert_line --partial 'Using drill SOA'
@@ -119,12 +106,12 @@ teardown() {
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
 
     # Check that we also check the public DNS server if requested
     CHECK_PUBLIC_DNS_SERVER=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org 1\.0\.0\.1'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org 1\.0\.0\.1'
 }
 
 
@@ -202,7 +189,7 @@ teardown() {
     run get_auth_dns www.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
 
     # Assert that we found a CNAME but didn't use drill NS
     assert_line --partial 'Using drill CNAME'
@@ -211,5 +198,5 @@ teardown() {
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns www.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org ns[1-3]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
 }
