@@ -15,6 +15,7 @@ else
 fi
 
 ALIAS="$OS.getssl.test"
+GETSSL_IDN_HOST="$OS.xn--t-r1a81lydm69gz81r.test"
 STAGING=""
 GETSSL_OS=$OS
 
@@ -34,11 +35,14 @@ docker build --rm -f "test/Dockerfile-$OS" -t "getssl-$OS" .
 # shellcheck disable=SC2086
 docker run \
   --env GETSSL_HOST=$ALIAS $STAGING \
+  --env GETSSL_IDN_HOST=$GETSSL_IDN_HOST \
   --env GETSSL_OS=$GETSSL_OS \
+  --env GITHUB_REPOSITORY="${GITHUB_REPOSITORY}" \
   -v "$(pwd)":/getssl \
   --rm \
   --network ${PWD##*/}_acmenet \
   --network-alias $ALIAS \
+  --network-alias $GETSSL_IDN_HOST \
   --network-alias "a.$OS.getssl.test" \
   --network-alias "b.$OS.getssl.test" \
   --network-alias "c.$OS.getssl.test" \

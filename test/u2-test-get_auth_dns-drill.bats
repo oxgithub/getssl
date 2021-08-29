@@ -7,6 +7,7 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 setup() {
+    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     for app in dig host nslookup
     do
         if [ -f /usr/bin/${app} ]; then
@@ -22,6 +23,7 @@ setup() {
 
 
 teardown() {
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
     for app in dig host nslookup
     do
         if [ -f /usr/bin/${app}.getssl.bak ]; then
@@ -65,14 +67,14 @@ teardown() {
     run get_auth_dns ubuntu-getssl.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-9]+\.duckdns\.org'
     # Assert that we had to use drill NS
     assert_line --regexp 'Using drill.* NS'
 
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = (ns[1-9]+\.duckdns\.org )+'
 }
 
 
@@ -97,7 +99,7 @@ teardown() {
     run get_auth_dns ubuntu-getssl.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-9]+\.duckdns\.org'
 
     # Assert that we had to use drill NS
     assert_line --regexp 'Using drill.* SOA'
@@ -106,12 +108,12 @@ teardown() {
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = (ns[1-9]+\.duckdns\.org )+'
 
     # Check that we also check the public DNS server if requested
     CHECK_PUBLIC_DNS_SERVER=true
     run get_auth_dns ubuntu-getssl.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org 1\.0\.0\.1'
+    assert_output --regexp 'set primary_ns = (ns[1-9]+\.duckdns\.org )+1\.0\.0\.1'
 }
 
 
@@ -138,7 +140,7 @@ teardown() {
     run get_auth_dns www.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.com'
+    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.net'
 
     # Assert that we found a CNAME and use drill NS
     assert_line --regexp 'Using drill.* CNAME'
@@ -147,12 +149,12 @@ teardown() {
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns www.duckdns.org
-    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.com'
+    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.net'
 
     # Check that we also check the public DNS server if requested
     CHECK_PUBLIC_DNS_SERVER=true
     run get_auth_dns www.duckdns.org
-    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.com 1\.0\.0\.1'
+    assert_output --regexp 'set primary_ns = ns.*\.awsdns.*\.net 1\.0\.0\.1'
 }
 
 
@@ -189,7 +191,7 @@ teardown() {
     run get_auth_dns www.duckdns.org
 
     # Assert that we've found the primary_ns server
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = ns[1-9]+\.duckdns\.org'
 
     # Assert that we found a CNAME but didn't use drill NS
     assert_line --regexp 'Using drill.* CNAME'
@@ -198,5 +200,5 @@ teardown() {
     # Check all Authoritive DNS servers are returned if requested
     CHECK_ALL_AUTH_DNS=true
     run get_auth_dns www.duckdns.org
-    assert_output --regexp 'set primary_ns = ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org ns[1-4]+\.duckdns\.org'
+    assert_output --regexp 'set primary_ns = (ns[1-9]+\.duckdns\.org )+'
 }
