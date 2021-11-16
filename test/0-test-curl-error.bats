@@ -12,20 +12,18 @@ teardown() {
 
 setup() {
     [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
-    export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
+    #export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
 }
 
 
-@test "Check that can install challenge token to multiple locations when using HTTP-01 verification" {
+@test "Run getssl without pebble certificates to check the error message" {
     if [ -n "$STAGING" ]; then
         skip "Using staging server, skipping internal test"
     fi
-    CONFIG_FILE="getssl-http01-two-acl.cfg"
+    CONFIG_FILE="getssl-http01.cfg"
     setup_environment
     init_getssl
     create_certificate
-    assert_success
-    assert_output --partial "to /var/www/html/.well-known/acme-challenge"
-    assert_output --partial "to /var/webroot/html/.well-known/acme-challenge"
-    check_output_for_errors
+    refute_line "getssl: unknown API version"
+    assert_failure
 }

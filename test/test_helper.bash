@@ -16,24 +16,16 @@ check_nginx() {
   if [ "$(printf '%s\n' "$requiredver" "$currentver" | sort -V | head -n1)" = "$requiredver" ]; then
     export OLD_NGINX="false"
   else
-    echo "INFO: Running nginx version $currentver which doesn't support dual certificates" >&3
-    echo "INFO: not checking that certificate is installed correctly" >&3
+    echo "# INFO: Running nginx version $currentver which doesn't support dual certificates"
+    echo "# INFO: not checking that certificate is installed correctly"
     export OLD_NGINX="true"
   fi
 }
 
 check_output_for_errors() {
   refute_output --regexp '[Ff][Aa][Ii][Ll][Ee][Dd]'
-  # less strict tests if running with debug output
-  if [ -n "X$1" ]; then
-      # don't fail for :error:badNonce
-      refute_output --regexp '[^:][Ee][Rr][Rr][Oo][Rr][^:]'
-      # don't check for "Warnings:" as there might be a warning message if nslookup doesn't support -debug (alpine/ubuntu)
-      refute_output --regexp '[Ww][Aa][Rr][Nn][Ii][Nn][Gg][^:]'
-  else
-      refute_output --regexp '[Ee][Rr][Rr][Oo][Rr]'
-      refute_output --regexp '[Ww][Aa][Rr][Nn][Ii][Nn][Gg]'
-  fi
+  refute_output --regexp '[^_][Ee][Rr][Rr][Oo][Rr][^:nonce]'
+  refute_output --regexp '[Ww][Aa][Rr][Nn][Ii][Nn][Gg]'
   refute_line --partial 'command not found'
 }
 
@@ -47,12 +39,12 @@ create_certificate() {
   # Create certificate
   cp "${CODE_DIR}/test/test-config/${CONFIG_FILE}" "${INSTALL_DIR}/.getssl/${GETSSL_CMD_HOST}/getssl.cfg"
   # shellcheck disable=SC2086
-  run ${CODE_DIR}/getssl -d "$@" "$GETSSL_CMD_HOST"
+  run ${CODE_DIR}/getssl -U -d "$@" "$GETSSL_CMD_HOST"
 }
 
 init_getssl() {
   # Run initialisation (create account key, etc)
-  run ${CODE_DIR}/getssl -d -c "$GETSSL_CMD_HOST"
+  run ${CODE_DIR}/getssl -U -d -c "$GETSSL_CMD_HOST"
   assert_success
   [ -d "$INSTALL_DIR/.getssl" ]
 }
@@ -82,10 +74,10 @@ if [[ -f /usr/bin/supervisord && -f /etc/supervisord.conf ]]; then
   fi
 elif [[ "$GETSSL_OS" == "centos"[78] || "$GETSSL_OS" == "rockylinux"* ]]; then
   if [ -z "$(pgrep nginx)" ]; then
-    nginx >&3-
+    nginx 3>&-
   fi
   if [ -z "$(pgrep vsftpd)" ] && [ "$(command -v vsftpd)" ]; then
-    vsftpd >&3-
+    vsftpd 3>&-
   fi
 fi
 

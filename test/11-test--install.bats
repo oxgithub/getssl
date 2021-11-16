@@ -7,11 +7,11 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
 }
 
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
 }
 
@@ -34,12 +34,12 @@ setup() {
     cp "${CODE_DIR}/test/test-config/getssl-etc-template.cfg" "/etc/getssl/getssl.cfg"
 
     # Run getssl
-    run ${CODE_DIR}/getssl "$GETSSL_CMD_HOST"
+    run ${CODE_DIR}/getssl -U -d "$GETSSL_CMD_HOST"
 
     assert_success
     check_output_for_errors
-    assert_line 'Verification completed, obtaining certificate.'
-    assert_line 'Requesting certificate'
+    assert_line --partial 'Verification completed, obtaining certificate.'
+    assert_line --partial 'Requesting certificate'
     refute [ -d '$HOME/.getssl' ]
 }
 
@@ -53,12 +53,12 @@ setup() {
     CONFIG_FILE="getssl-http01.cfg"
 
     # Run getssl
-    run ${CODE_DIR}/getssl --install "$GETSSL_CMD_HOST"
+    run ${CODE_DIR}/getssl -U -d --install "$GETSSL_CMD_HOST"
 
     assert_success
     check_output_for_errors
-    refute_line 'Verification completed, obtaining certificate.'
-    refute_line 'Requesting certificate'
+    refute_line --partial 'Verification completed, obtaining certificate.'
+    refute_line --partial 'Requesting certificate'
     assert_line --partial 'copying domain certificate to'
     assert_line --partial 'copying private key to'
     assert_line --partial 'copying CA certificate to'

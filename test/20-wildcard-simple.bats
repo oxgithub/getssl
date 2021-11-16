@@ -7,11 +7,11 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
 }
 
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     if [ -z "$STAGING" ]; then
         export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
     fi
@@ -35,7 +35,7 @@ setup() {
         skip "Using staging server, skipping internal test"
     fi
 
-    run ${CODE_DIR}/getssl "*.$GETSSL_HOST"
+    run ${CODE_DIR}/getssl -U -d "*.$GETSSL_HOST"
     assert_success
     assert_line --partial "certificate is valid for more than"
     check_output_for_errors
@@ -47,7 +47,7 @@ setup() {
         skip "Using staging server, skipping internal test"
     fi
 
-    run ${CODE_DIR}/getssl -f "*.$GETSSL_HOST"
+    run ${CODE_DIR}/getssl -U -d -f "*.$GETSSL_HOST"
     assert_success
     refute_line --partial "certificate is valid for more than"
     check_output_for_errors
@@ -61,7 +61,7 @@ setup() {
 
     echo "RENEW_ALLOW=2000" >> "${INSTALL_DIR}/.getssl/*.${GETSSL_HOST}/getssl.cfg"
 
-    run ${CODE_DIR}/getssl "*.$GETSSL_HOST"
+    run ${CODE_DIR}/getssl -U -d "*.$GETSSL_HOST"
     assert_success
     refute_line --partial "certificate is valid for more than"
     check_output_for_errors

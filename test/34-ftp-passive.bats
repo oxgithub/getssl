@@ -7,7 +7,7 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
     if [ -n "${VSFTPD_CONF}" ]; then
         cp $VSFTPD_CONF ${VSFTPD_CONF}.getssl
@@ -21,16 +21,16 @@ pasv_min_port=10090
 connect_from_port_20=NO
 _FTP
 
-        ${CODE_DIR}/test/restart-ftpd
+        ${CODE_DIR}/test/restart-ftpd start
     fi
 }
 
 
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
     if [ -n "${VSFTPD_CONF}" ]; then
         cp ${VSFTPD_CONF}.getssl $VSFTPD_CONF
-        ${CODE_DIR}/test/restart-ftpd
+        ${CODE_DIR}/test/restart-ftpd stop
     fi
 }
 

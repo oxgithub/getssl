@@ -7,11 +7,11 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
 }
 
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     if [ -z "$STAGING" ]; then
         export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
     fi
@@ -40,7 +40,7 @@ setup() {
     rm -r ${INSTALL_DIR}/.getssl
 
     # Create configuration
-    run ${CODE_DIR}/getssl -c "${GETSSL_CMD_HOST}"
+    run ${CODE_DIR}/getssl -U -d -c "${GETSSL_CMD_HOST}"
 
     # Assert that the newly created configuration contains the additional domain in SANS
     # if this fails then error in tests will be "grep failed" - this means SANS did not hold the expected value

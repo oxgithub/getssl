@@ -7,11 +7,11 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
 }
 
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
 }
 
@@ -45,10 +45,10 @@ setup() {
         skip "Using staging server, skipping internal test"
     fi
     check_nginx
-    run ${CODE_DIR}/getssl -d $GETSSL_HOST
+    run ${CODE_DIR}/getssl -U -d $GETSSL_HOST
 
     if [ "$OLD_NGINX" = "false" ]; then
-        assert_line "certificate on server is same as the local cert"
+        assert_line --partial "certificate on server is same as the local cert"
     else
         assert_line --partial "certificate is valid for more than 30 days"
     fi
@@ -60,7 +60,7 @@ setup() {
     if [ -n "$STAGING" ]; then
         skip "Using staging server, skipping internal test"
     fi
-    run ${CODE_DIR}/getssl -f $GETSSL_HOST
+    run ${CODE_DIR}/getssl -U -f $GETSSL_HOST
     assert_success
     check_output_for_errors
 }
@@ -94,7 +94,7 @@ setup() {
     if [ -n "$STAGING" ]; then
         skip "Using staging server, skipping internal test"
     fi
-    run ${CODE_DIR}/getssl -f $GETSSL_HOST
+    run ${CODE_DIR}/getssl -U -f $GETSSL_HOST
     assert_success
     check_output_for_errors
     cleanup_environment

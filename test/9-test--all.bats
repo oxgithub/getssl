@@ -7,11 +7,11 @@ load '/getssl/test/test_helper.bash'
 
 # This is run for every test
 teardown() {
-    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_TMPDIR/failed.skip
+    [ -n "$BATS_TEST_COMPLETED" ] || touch $BATS_RUN_TMPDIR/failed.skip
 }
 
 setup() {
-    [ ! -f $BATS_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
+    [ ! -f $BATS_RUN_TMPDIR/failed.skip ] || skip "skipping tests after first failure"
     export CURL_CA_BUNDLE=/root/pebble-ca-bundle.crt
     export PATH=$PATH:/getssl
 }
@@ -29,7 +29,7 @@ setup() {
     cp "${CODE_DIR}/test/test-config/${CONFIG_FILE}" "${INSTALL_DIR}/.getssl/${GETSSL_HOST}/getssl.cfg"
 
     # Run test
-    run ${CODE_DIR}/getssl --all
+    run ${CODE_DIR}/getssl -U -d --all
 
     # Check success conditions
     assert_success

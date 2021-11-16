@@ -21,6 +21,11 @@ for automating the process on remote servers.
 - [Include Root certificate in full chain](#include-root-certificate-in-full-chain)
 - [Issues / problems / help](#issues--problems--help)
 
+## Upgrade broken in v2.43
+
+The automatic upgrade in v2.43 is broken as the url is incorrect.  If you have this version installed you'll need to manually upgrade using:
+```curl --silent --user-agent getssl/manual https://raw.githubusercontent.com/srvrco/getssl/latest/getssl --output getssl```
+
 ## Features
 
 * **Bash** - It runs on virtually all unix machines, including BSD, most
@@ -58,7 +63,7 @@ Since the script is only one file, you can use the following command for
 a quick installation of GetSSL only:
 
 ```sh
-curl --silent https://raw.githubusercontent.com/srvrco/getssl/master/getssl > getssl ; chmod 700 getssl
+curl --silent https://raw.githubusercontent.com/srvrco/getssl/latest/getssl > getssl ; chmod 700 getssl
 ```
 
 This will copy the getssl Bash script to the current location and change
@@ -92,7 +97,7 @@ sftp or ftp access to the remote server).
 getssl ver. 2.36
 Obtain SSL certificates from the letsencrypt.org ACME server
 
-Usage: getssl [-h|--help] [-d|--debug] [-c|--create] [-f|--force] [-a|--all] [-q|--quiet] [-Q|--mute] [-u|--upgrade] [-k|--keep #] [-U|--nocheck] [-r|--revoke cert key] [-w working_dir] [--preferred-chain chain] domain   
+Usage: getssl [-h|--help] [-d|--debug] [-c|--create] [-f|--force] [-a|--all] [-q|--quiet] [-Q|--mute] [-u|--upgrade] [-X|--experimental tag] [-U|--nocheck] [-r|--revoke cert key] [-w working_dir] [--preferred-chain chain] domain   
 
 Options:
   -a, --all          Check all certificates
@@ -105,7 +110,7 @@ Options:
   -Q, --mute         Like -q, but also mute notification about successful upgrade
   -r, --revoke   "cert" "key" [CA_server] Revoke a certificate (the cert and key are required)
   -u, --upgrade      Upgrade getssl if a more recent version is available - can be used with or without domain(s)
-  -k, --keep     "#" Maximum number of old getssl versions to keep when upgrading
+  -X  --experimental tag Allow upgrade to a specified version of getssl
   -U, --nocheck      Do not check if a more recent version is available
   -v  --version      Display current version of getssl
   -w working_dir "Working directory"
