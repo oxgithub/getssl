@@ -7,11 +7,14 @@ ENV DEBIAN_FRONTEND noninteractive
 
 # Ensure tests in this image use the staging server
 ENV staging "true"
-ENV dynamic_dns "duckdns"
+# 2016ENV dynamic_dns "acme-dns"
+ENV ACMEDNS_API_USER 49ac5f6d-74cd-4aca-acfe-f9457af7894c
+ENV ACMEDNS_API_KEY 2NPGF8cH7PeTrHZWXImi1prhTsQGz2pdCC7Za5zE
+ENV ACMEDNS_SUBDOMAIN 7268181b-7075-4dce-be51-9c20c205cf6e
 
 # Update and install required software
 RUN apt-get update --fix-missing
-RUN apt-get install -y git curl dnsutils ldnsutils wget nginx-light jq
+RUN apt-get install -y git curl dnsutils ldnsutils wget nginx-light
 RUN apt-get install -y vim dos2unix # for debugging
 RUN apt-get install -y locales # for idn testing
 
@@ -27,10 +30,10 @@ WORKDIR /root
 RUN touch /root/.rnd
 
 # BATS (Bash Automated Testings)
-RUN git clone --depth 1 https://github.com/bats-core/bats-core.git /bats-core
-RUN git clone --depth 1 https://github.com/bats-core/bats-support /bats-support
-RUN git clone --depth 1 https://github.com/bats-core/bats-assert /bats-assert
+RUN git clone https://github.com/bats-core/bats-core.git /bats-core
+RUN git clone https://github.com/bats-core/bats-support /bats-support
+RUN git clone https://github.com/bats-core/bats-assert /bats-assert
 RUN /bats-core/install.sh /usr/local
 
 # Run eternal loop - for testing
-CMD [ "tail", "-f", "/dev/null" ]
+CMD tail -f /dev/null
